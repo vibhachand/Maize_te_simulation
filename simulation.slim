@@ -1,0 +1,639 @@
+// modified using te position instead of te tag
+
+
+
+// Keywords: 
+initialize()
+{
+	defineConstant("L", 1e6); // chromosome length
+	defineConstant("teInitialCount", 1000); // initial number of TEs, one per genome/individual? right now its less current number: 12278
+	defineConstant("teJumpP", 0.001); // TE jump probability
+	defineConstant("teDisableP", 0.005); // disabling mut probability & autonomous to non-autonomous TE conversion rate
+	teSilenceP = 0.05; // epigenetic silencing mut probability
+	initializeMutationRate(1e-7);
+	
+	//change to gamma distribution
+	
+	// autonomous + neutral mutation type, blue
+	initializeMutationType("m1", 0.5, "g", 0.0, 0.2);
+	m1.convertToSubstitution = F;
+	m1.color = "#4699d8";
+	
+	// autonomous + deleterious mutation type, red
+	initializeMutationType("m2", 0.5, "g", -0.05, 0.2);
+	m2.convertToSubstitution = F;
+	m2.color = "#FF564F";
+	
+	// autonomous + advantageous mutation type, light green
+	initializeMutationType("m3", 0.5, "g", 0.005, 0.2);
+	m3.convertToSubstitution = F;
+	m3.color = "#01F182";
+	
+	// non-autonomous + neutral mutation type, dark blue
+	initializeMutationType("m4", 0.5, "g", 0.0, 0.2);
+	m4.convertToSubstitution = F;
+	m4.color = "#193DB6";
+	
+	// non-autonomous + deleterious mutation type, dark red
+	initializeMutationType("m5", 0.5, "g", -0.05, 0.2);
+	m5.convertToSubstitution = F;
+	m5.color = "#A30202";
+	
+	// non-autonomous + advantageous mutation type, dark green
+	initializeMutationType("m6", 0.5, "g", 0.005, 0.2);
+	m6.convertToSubstitution = F;
+	m6.color = "#008347";
+	
+	// disabled mutation type, grey
+	initializeMutationType("m7", 0.5, "f", 0.0);
+	m7.convertToSubstitution = F;
+	m7.color = "#FFFFFF";
+	
+	// silenced mutation type, purple
+	initializeMutationType("m8", 0.5, "f", 0.0);
+	m8.convertToSubstitution = F;
+	m8.color = "#6E36DE";
+	
+	// creates genomic element where autonomous and non-autonomous mutation types are generated
+	initializeGenomicElementType("g1", c(m1, m2, m3, m4, m5, m6), c(1.0, 1.0, 0.01, 1.0, 1.0, 0.01));
+	initializeGenomicElement(g1, 0, L - 1);
+	initializeRecombinationRate(1e-8);
+}
+
+1 early()
+{
+	// ancestral teosinte population size is 12278/2
+	sim.addSubpop("p1", 12278);
+	sim.tag = 0; // the next unique tag value to use for TEs
+	
+	// create some neutral transposons at random positions
+	genomes = sim.subpopulations.genomes;
+	positions = rdunif(teInitialCount, 0, L - 1);
+	for (teIndex in 0:(teInitialCount - 1))
+	{
+		pos = positions[teIndex];
+		mut = genomes.addNewDrawnMutation(m1, pos);
+		mut.tag = sim.tag;
+		sim.tag = sim.tag + 1;
+	}
+}
+
+
+
+
+// adapted Beissinger et al. 2016 demographic model; downscaled 10x and without gene flow with teosinte
+
+// domestication bottleneck, towards the beggining/middle of simulation
+// was 500 early, changed to 50
+500 early() {
+
+	//pre-bottleneck stats
+	
+	all_tes = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3), sim.mutationsOfType(m4), sim.mutationsOfType(m5), sim.mutationsOfType(m6), sim.mutationsOfType(m7), sim.mutationsOfType(m8)), "position");
+	all_auto_tes = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3)), "position");
+	all_non_auto_tes = sortBy(c(sim.mutationsOfType(m4), sim.mutationsOfType(m5), sim.mutationsOfType(m6)), "position");
+	all_disabled_tes = sortBy(sim.mutationsOfType(m7), "position");
+	all_epigenetic_tes = sortBy(sim.mutationsOfType(m8), "position");
+	genomeCount = size(sim.subpopulations.genomes);
+	
+	// counts total number of transposons for each mutation type
+	nonAutoTECount = size(all_non_auto_tes);
+	disabledTECount = size(all_disabled_tes);
+	autoTECount = size(all_auto_tes);
+	silencedTECount = size(all_epigenetic_tes);
+	
+	
+	totalTEs = autoTECount + nonAutoTECount + disabledTECount + silencedTECount;
+	
+	all_auto_tes = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3)), "position");
+	
+	advantageousTEs = sortBy(c(sim.mutationsOfType(m3), sim.mutationsOfType(m6)), "position");
+	advantageousTECount = size(advantageousTEs);
+	
+	deleteriousTEs = sortBy(c(sim.mutationsOfType(m3), sim.mutationsOfType(m6)), "position");
+	deleteriousTECount = size(deleteriousTEs);
+	
+	neutralTEs = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m4)), "position");
+	neutralTECount = size(neutralTEs);
+	
+	activeTEs = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3), sim.mutationsOfType(m4), sim.mutationsOfType(m5), sim.mutationsOfType(m4)), "position");
+	activeTECount = size(activeTEs);
+	
+	
+	
+	catn("\n\n\n\n\nPRE-BOTTLENECK");
+	
+	
+	
+	
+
+	
+	//silenced, disabled, and active TEs: 
+	
+	sdaTEs = silencedTECount + disabledTECount + activeTECount;
+	
+	catn("\nPercentage of Silenced TEs: ");
+	silencedTEPercent = (silencedTECount/ sdaTEs)*100;
+	catn(silencedTEPercent);
+	
+	catn("\nPercentage of Disabled TEs: ");
+	disabledTEPercent = (disabledTECount/ sdaTEs)*100;
+	catn(disabledTEPercent);
+	
+	catn("\nPercentage of Active TEs: ");
+	activeTEPercent = (activeTECount/ sdaTEs)*100;
+	catn(activeTEPercent);
+	
+	
+	//neutral, advantageous, and deleterious TEs:
+	
+	nadTEs = neutralTECount + advantageousTECount + deleteriousTECount;
+	
+	catn("\nPercentage of Neutral TEs: ");
+	neutralTEPercent = (neutralTECount/ nadTEs)*100;
+	catn(neutralTEPercent);
+	
+	catn("\nPercentage of Advantageous TEs: ");
+	advantageousTEPercent = (advantageousTECount/ nadTEs)*100;
+	catn(advantageousTEPercent);
+	
+	catn("\nPercentage of Deleterious TEs: ");
+	deleteriousTEPercent = (deleteriousTECount/ nadTEs)*100;
+	catn(deleteriousTEPercent);
+	
+	
+	//autonomous and non-autonomout TEs:
+	
+	anaTEs = autoTECount + nonAutoTECount;
+	
+	catn("\nPercentage of Autonomous TEs: ");
+	autoTEPercent = (autoTECount / anaTEs)*100;
+	catn(autoTEPercent);
+	
+	catn("\nPercentage of Non-autonomous TEs: ");
+	nonAutoTEPercent = (nonAutoTECount / anaTEs)*100;
+	catn(nonAutoTEPercent);
+	
+	
+	
+	
+	
+	
+	//set bottleneck:
+	
+	//bottleneck size: 646/2
+	p1.setSubpopulationSize(646);
+	
+	return;
+}
+
+// exponential population growth
+500:5000 early() {
+	t = sim.cycle-1;
+	p1_size = round(646 * (1 + 0.0025943665)^t);
+	p1.setSubpopulationSize(asInteger(p1_size));
+}
+
+
+
+// converts autonomous TEs into non-autonomous TEs
+early()
+{
+	count = 0;
+	
+	// remove transposition machinery with rate teDisableP
+	allIndividuals = sim.subpopulations.individuals;
+	for (genome in allIndividuals.genomes)
+	{
+		count = count + 1;
+		tes = genome.mutationsOfType(m1);
+		tes2 = genome.mutationsOfType(m2);
+		tes3 = genome.mutationsOfType(m3);
+		te_total = c(tes, tes2, tes3);
+		teCount = size(te_total);
+		mutatedCount = teCount ? rpois(1, teCount * teDisableP) else 0;
+		if (mutatedCount < teCount)
+		{
+			mutatedTEs = sample(te_total, mutatedCount);
+			for (te in mutatedTEs)
+			
+			{
+				
+				all_disabledTEs = sim.mutationsOfType(m4);
+				
+				disabledTE = all_disabledTEs[all_disabledTEs.position == te.position];
+				
+			
+				if (size(disabledTE))
+				{
+					// use the existing disabled TE mutation
+					genome.removeMutations(te);
+					genome.addMutations(disabledTE);
+					next;
+				}
+				
+				// convert autonomous TE to corresponding non-autonomous TE (i.e. deleterious autonomous TE (m2) converts to a deleterious non-autonomous TE (m5))
+				if (te.mutationType == m1)
+				{
+					genome.removeMutations(te);
+					disabledTE = genome.addNewDrawnMutation(m4, te.position);
+					next;
+				}
+				if (te.mutationType == m2)
+				{
+					genome.removeMutations(te);
+					disabledTE = genome.addNewDrawnMutation(m5, te.position);
+					next;
+				}
+				if (te.mutationType == m3)
+				{
+					genome.removeMutations(te);
+					disabledTE = genome.addNewDrawnMutation(m6, te.position);
+					next;
+				}
+			
+			}
+		}
+	}
+}
+
+
+// disables TEs
+early(){
+	// disable TEs with rate teDisableP
+	allIndividuals = sim.subpopulations.individuals;
+	for (genome in allIndividuals.genomes)
+	{
+		tes = genome.mutationsOfType(m1);
+		tes2 = genome.mutationsOfType(m2);
+		tes3 = genome.mutationsOfType(m3);
+		tes4 = genome.mutationsOfType(m4);
+		tes5 = genome.mutationsOfType(m5);
+		tes6 = genome.mutationsOfType(m6);
+		te_total = c(tes, tes2, tes3, tes4, tes5, tes6);
+		teCount = size(te_total);
+		mutatedCount = teCount ? rpois(1, teCount * teDisableP) else 0;
+		if (mutatedCount < teCount)
+		{
+			mutatedTEs = sample(te_total, mutatedCount);
+			for (te in mutatedTEs)
+			
+			{
+
+				all_disabledTEs = sim.mutationsOfType(m7);
+				
+
+				disabledTE = all_disabledTEs[all_disabledTEs.position == te.position];
+				
+
+				if (size(disabledTE))
+				{
+					// use the existing disabled TE mutation
+					
+					genome.removeMutations(te);
+					genome.addMutations(disabledTE);
+					next;
+				}
+				
+				// make a new disabled TE mutation with the right tag
+				genome.removeMutations(te);
+				disabledTE = genome.addNewDrawnMutation(m7, te.position);
+				
+			
+			}
+		}
+	}
+}
+
+
+// epigenetically silences TEs based on the age of TEs and number of TE copies in the population
+early()
+{
+	// silence TEs with rate teSilenceP
+	// check if total TE copies exceeds 40*(population size)
+	epiTag = F;
+	teSilenceP = 0.05;
+	teCount = 0;
+	
+	
+	
+	for (individual in sim.subpopulations.individuals){
+		individualTEs = sortBy(c(individual.genomes.mutationsOfType(m1), individual.genomes.mutationsOfType(m2), individual.genomes.mutationsOfType(m3),  individual.genomes.mutationsOfType(m4), individual.genomes.mutationsOfType(m5),  individual.genomes.mutationsOfType(m6), individual.genomes.mutationsOfType(m7)), "position");
+		
+		teCount = size(individualTEs);
+
+		
+		if (teCount > 40){
+			epiTag = T;
+		}
+		
+		if (epiTag == T){
+			//catn("\ntes will now be epigenetically silenced");
+			
+			silencedCount = teCount ? rpois(1, teCount * teSilenceP) else 0;
+			
+
+			
+			if (silencedCount)
+			{
+				if (asInteger(silencedCount) < size(individualTEs)) {
+				silencedTEs = sample(individualTEs, asInteger(silencedCount));
+				for (te in silencedTEs)
+				{
+					//check if te is old enough to be silenced and add random chance for te to be silenced
+					if ((5000 - te.originTick) > 20)
+					{
+						
+						
+						all_silencedTEs = sim.mutationsOfType(m8);
+						silencedTE = all_silencedTEs[all_silencedTEs.position == te.position];
+						
+						
+
+						if (size(silencedTE))
+						{
+							// use the existing silenced TE mutation
+							individual.genomes.removeMutations(te);
+							individual.genomes.addMutations(silencedTE);
+							next;
+						}
+						
+						// make a new silenced TE mutation
+						individual.genomes.removeMutations(te);
+						silencedTE = individual.genomes.addNewDrawnMutation(m8, te.position);
+						
+						
+						//silencedTE.tag = te.tag;
+					
+					
+					
+					}
+					
+					//20% chance (randomly chosen) of reactivation
+					if (runif(1) < 0.2) {
+						//convert to autonomous and neutral mutation type
+						reactivationCount = 0;
+						teReactivationP = 0.005;
+						//interger?
+						reactivationPool = individual.genomes.mutationsOfType(m8);
+						reactivationPoolSize = size(individual.genomes.mutationsOfType(m8));
+						reactivationCount = teCount ? rpois(1, reactivationPoolSize * teReactivationP) else 0;
+						
+						if (asInteger(reactivationCount) < size(reactivationPool)){
+						reactivatedTEs = sample(reactivationPool, asInteger(reactivationCount));
+						
+						//iterate through each silenced te in the individual and convert to autonomous netrual
+						for (te in reactivatedTEs) {
+							individual.genomes.removeMutations(te);
+							disabledTE = individual.genomes.addNewDrawnMutation(m1, te.position);
+						}
+						}
+					
+					
+					}
+				
+				}
+				}
+			}
+		}
+	}
+	
+}
+
+
+
+// copy autonomous transposons
+// mutations will stack
+early()
+{
+	// make autonomous transposons copy themselves with rate teJumpP
+	for (individual in sim.subpopulations.individuals)
+	{
+		for (genome in individual.genomes)
+		{
+			tes = genome.mutationsOfType(m1);
+			tes2 = genome.mutationsOfType(m2);
+			tes3 = genome.mutationsOfType(m3);
+			teCount = tes.size() + tes2.size() + tes3.size();
+			jumpCount = teCount ? rpois(1, teCount * teJumpP) else 0;
+			if (jumpCount)
+			{
+				if (jumpCount < teCount) {
+				jumpTEs = sample(c(tes, tes2, tes3), jumpCount);
+				
+			
+				for (i in 1:size(jumpTEs) - 1)
+				{
+					
+					if (jumpTEs[i].mutationType == m1)
+					{
+				
+						pos = rdunif(1, 0, L - 1);
+						jumpTE = genome.addNewDrawnMutation(m1, pos);
+						jumpTE.tag = sim.tag;
+						sim.tag = sim.tag + 1;
+						next;
+					}
+					if (jumpTEs[i].mutationType == m2)
+					{
+						pos = rdunif(1, 0, L - 1);
+						jumpTE = genome.addNewDrawnMutation(m2, pos);
+						jumpTE.tag = sim.tag;
+						sim.tag = sim.tag + 1;
+						next;
+					}
+					if (jumpTEs[i].mutationType == m3)
+					{
+						pos = rdunif(1, 0, L - 1);
+						jumpTE = genome.addNewDrawnMutation(m3, pos);
+						jumpTE.tag = sim.tag;
+						sim.tag = sim.tag + 1;
+						next;
+					}
+					else
+					{
+						break;
+					}
+				}
+				}
+			}
+		}
+	}
+}
+
+// Every 50 generations print TE abundance/percentage over time, maybe make a new file for that so its easier to read
+
+
+early()
+{
+
+
+	if (sim.cycle % 50 == 0)
+	{
+		// get count of autonomous and non-autonomous TEs
+		active = size(sim.mutationsOfType(m1)) + size(sim.mutationsOfType(m2)) + size(sim.mutationsOfType(m3)) + size(sim.mutationsOfType(m4)) + size(sim.mutationsOfType(m5)) + size(sim.mutationsOfType(m6));
+		disabled = size(sim.mutationsOfType(m7));
+		silenced = size(sim.mutationsOfType(m8));
+		total = active + disabled + silenced;
+		line2 = "total TEs: " + total;
+	
+	}
+}
+
+
+//changed from 5000 to smaller number for debugging purposes
+5000 late()
+{
+	// print information on each TE, including the fraction of it disabled
+	all_tes = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3), sim.mutationsOfType(m4), sim.mutationsOfType(m5), sim.mutationsOfType(m6), sim.mutationsOfType(m7), sim.mutationsOfType(m8)), "position");
+	all_auto_tes = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3)), "position");
+	all_non_auto_tes = sortBy(c(sim.mutationsOfType(m4), sim.mutationsOfType(m5), sim.mutationsOfType(m6)), "position");
+	all_disabled_tes = sortBy(sim.mutationsOfType(m7), "position");
+	all_epigenetic_tes = sortBy(sim.mutationsOfType(m8), "position");
+	genomeCount = size(sim.subpopulations.genomes);
+	
+	// counts total number of transposons for each mutation type
+	nonAutoTECount = size(all_non_auto_tes);
+	disabledTECount = size(all_disabled_tes);
+	autoTECount = size(all_auto_tes);
+	silencedTECount = size(all_epigenetic_tes);
+	
+
+	
+	//catn("Autonomous TEs:");
+	for (te in all_auto_tes)
+	{
+		TEage = 5000 - te.originTick;
+		active = sim.mutationCounts(NULL, te);
+		
+		// need a count of if the tes went from autonomous to non-autonomous
+		total = active + nonAutoTECount;
+	
+	}
+	//catn("\nNon-autonomous TEs: ");
+	for (te in all_non_auto_tes)
+	{
+		freq = sim.mutationFrequencies(NULL, te);
+	
+	
+	}
+	
+	catn("Autonomous TEs:");
+	for (te in all_auto_tes)
+	{
+		TEage = 5000 - te.originTick;
+		active = sim.mutationCounts(NULL, te);
+		
+		// need a count of if the tes went from autonomous to non-autonomous
+		total = active + nonAutoTECount;
+
+	
+	}
+	
+	
+	
+	totalTEs = autoTECount + nonAutoTECount + disabledTECount + silencedTECount;
+	
+	all_auto_tes = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3)), "position");
+	
+	advantageousTEs = sortBy(c(sim.mutationsOfType(m3), sim.mutationsOfType(m6)), "position");
+	advantageousTECount = size(advantageousTEs);
+	
+	deleteriousTEs = sortBy(c(sim.mutationsOfType(m3), sim.mutationsOfType(m6)), "position");
+	deleteriousTECount = size(deleteriousTEs);
+	
+	neutralTEs = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m4)), "position");
+	neutralTECount = size(neutralTEs);
+	
+	activeTEs = sortBy(c(sim.mutationsOfType(m1), sim.mutationsOfType(m2), sim.mutationsOfType(m3), sim.mutationsOfType(m4), sim.mutationsOfType(m5), sim.mutationsOfType(m4)), "position");
+	activeTECount = size(activeTEs);
+	
+	
+	// total population size after 5000 cycles
+	catn("\n\n\n\n\nFinal Population Size: ");
+	catn(p1.individualCount);
+	
+	// prints the amount of each type of TE
+	catn("\n\n\n\nTotal num of TEs (of all types): ");
+	catn(totalTEs);
+	catn("\nTotal num of autonomous TEs: ");
+	catn(autoTECount);
+	catn("\nTotal num of non-autonomous TEs: ");
+	catn(nonAutoTECount);
+	catn("\nTotal num of disabled TEs: ");
+	catn(disabledTECount);
+	catn("\nTotal num of epigenetically silenced TEs: ");
+	catn(size(sim.mutationsOfType(m6)));
+	
+	catn("\nTotal num of advantageous TEs: ");
+	catn(advantageousTECount);
+	catn("\nTotal num of neutral TEs: ");
+	catn(neutralTECount);
+	catn("\nTotal num of deleterious TEs: ");
+	catn(deleteriousTECount);
+	
+	
+	
+	// genome count is 12278, 2 genomes/chromosomes per individual
+	
+	
+	
+	catn("\nTE count is currently found by multiplying the average size of TEs in the maize genome pertaining to the literature (about 6123bp) * the number of TEs.");
+	
+	
+	//post-bottleneck stats
+	
+	catn("\n\n\n\nPOST BOTTLENECK: ");
+	
+
+	//silenced, disabled, and active TEs: 
+	
+	sdaTEs = silencedTECount + disabledTECount + activeTECount;
+	
+	catn("\nPercentage of Silenced TEs: ");
+	silencedTEPercent = (silencedTECount/ sdaTEs)*100;
+	catn(silencedTEPercent);
+	
+	catn("\nPercentage of Disabled TEs: ");
+	disabledTEPercent = (disabledTECount/ sdaTEs)*100;
+	catn(disabledTEPercent);
+	
+	catn("\nPercentage of Active TEs: ");
+	activeTEPercent = (activeTECount/ sdaTEs)*100;
+	catn(activeTEPercent);
+	
+	
+	//neutral, advantageous, and deleterious TEs:
+	
+	nadTEs = neutralTECount + advantageousTECount + deleteriousTECount;
+	
+	catn("\nPercentage of Neutral TEs: ");
+	neutralTEPercent = (neutralTECount/ nadTEs)*100;
+	catn(neutralTEPercent);
+	
+	catn("\nPercentage of Advantageous TEs: ");
+	advantageousTEPercent = (advantageousTECount/ nadTEs)*100;
+	catn(advantageousTEPercent);
+	
+	catn("\nPercentage of Deleterious TEs: ");
+	deleteriousTEPercent = (deleteriousTECount/ nadTEs)*100;
+	catn(deleteriousTEPercent);
+	
+	
+	//autonomous and non-autonomout TEs:
+	
+	anaTEs = autoTECount + nonAutoTECount;
+	
+	catn("\nPercentage of Autonomous TEs: ");
+	autoTEPercent = (autoTECount / anaTEs)*100;
+	catn(autoTEPercent);
+	
+	catn("\nPercentage of Non-autonomous TEs: ");
+	nonAutoTEPercent = (nonAutoTECount / anaTEs)*100;
+	catn(nonAutoTEPercent);
+	
+
+	
+
+
+}
